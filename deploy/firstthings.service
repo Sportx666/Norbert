@@ -1,0 +1,20 @@
+# Install:  sudo cp deploy/firstthings.service /etc/systemd/system/
+#           (replace YOUR_USER below), then:
+#           sudo systemctl daemon-reload && sudo systemctl enable --now firstthings
+# Logs:     journalctl -u firstthings -f
+[Unit]
+Description=firstthings accountability bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/firstthings
+ExecStart=/home/YOUR_USER/firstthings/.venv/bin/firstthings run
+Restart=always
+RestartSec=15
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

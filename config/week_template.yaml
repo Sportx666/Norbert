@@ -1,0 +1,115 @@
+# firstthings — default week
+#
+# Edit freely, then run:  firstthings check-template
+# Times are Europe/Rome unless a block says otherwise.
+# Every Sunday at 12:00 the bot turns this template into next week's plan.
+
+timezone: Europe/Rome
+
+employment:
+  # Stored in employer time, so the Italian clock shifts by itself at DST:
+  # 03:00-11:00 in Italy until 25 Oct 2026, 02:00-10:00 from 26 Oct, 03:00-11:00 again from 29 Mar 2027.
+  timezone: Australia/Perth
+  start: "09:00"
+  end: "17:00"
+  days: [mon, tue, wed, thu, fri]
+
+sleep:
+  target_minutes: 360        # 6 hours a day (decision 1)
+  lights_out: "20:30"        # every night
+  wake_before_work: 30       # workdays: wake = work start - 30 min
+  weekend_wake: "06:30"      # ASSUMPTION: change if your weekend mornings differ
+  nap:                       # nap = target - night, only when the night is short (decision: 5h night + nap)
+    after: work_end
+    offset: 360              # work end + 6h = straight after HCS
+    max_minutes: 90
+
+roles:
+  husband: Husband
+  father: Father
+  employee: Employee
+  hcs: HCS owner
+  trader: Trader
+  entrepreneur: Entrepreneur
+  self: Self
+
+# unit:        session | minutes | count
+# flexibility: fixed | movable | droppable
+# confirm:     ask (check-ins ask about it) | auto (assumed done at day close unless you report otherwise)
+# protected:   replans may not push work into it without your yes (Phase 2)
+# quiet:       no check-ins while it runs
+# during_work: allowed to overlap your work shift
+activities:
+  meditation:     {name: Meditation, role: self, minutes: 10, min_minutes: 5, unit: count, flexibility: droppable, quadrant: 2, during_work: true}
+  gym:            {name: Gym, role: self, minutes: 60, min_minutes: 30, unit: session, flexibility: movable, quadrant: 2}
+  lunch_wife:     {name: Lunch with wife, role: husband, minutes: 90, unit: minutes, flexibility: fixed, quadrant: 2, protected: true, confirm: auto}
+  trading:        {name: Trading development, role: trader, minutes: 120, min_minutes: 60, unit: minutes, flexibility: movable, quadrant: 2}
+  hcs:            {name: HCS, role: hcs, minutes: 90, min_minutes: 30, unit: minutes, flexibility: movable, quadrant: 2}
+  nap:            {name: Nap, role: self, minutes: 60, unit: minutes, flexibility: fixed, quadrant: 2, quiet: true, sleep: true}
+  dinner:         {name: Family dinner, role: father, minutes: 30, unit: minutes, flexibility: fixed, protected: true, quiet: true, confirm: auto}
+  family_evening: {name: Kids and family, role: father, minutes: 45, unit: minutes, flexibility: fixed, protected: true, quiet: true, confirm: auto}
+  reading:        {name: Read 10 pages, role: self, minutes: 15, min_minutes: 5, unit: count, flexibility: droppable, quadrant: 2, quiet: true}
+  weekly_review:  {name: Weekly review, role: self, minutes: 60, unit: minutes, flexibility: fixed, quadrant: 2}
+
+# Slot = {activity, at: "HH:MM"} or {activity, after: work_end, offset: minutes}; optional minutes override.
+groups:
+  workday:
+    - {activity: meditation, at: "06:00"}
+    - {activity: lunch_wife, after: work_end, offset: 60}
+    - {activity: trading, after: work_end, offset: 150}
+    - {activity: hcs, after: work_end, offset: 270}
+    - {activity: dinner, at: "19:00"}
+    - {activity: family_evening, at: "19:30"}
+    - {activity: reading, at: "20:15"}
+  gym_after_work:
+    - {activity: gym, after: work_end, offset: 0}
+  saturday:
+    - {activity: meditation, at: "07:00"}
+    - {activity: gym, at: "09:00"}
+    - {activity: hcs, at: "10:30", minutes: 60}
+    - {activity: dinner, at: "19:00"}
+    - {activity: family_evening, at: "19:30"}
+    - {activity: reading, at: "20:15"}
+  sunday:
+    - {activity: meditation, at: "07:00"}
+    - {activity: weekly_review, at: "17:30"}
+    - {activity: dinner, at: "19:00"}
+    - {activity: family_evening, at: "19:30"}
+    - {activity: reading, at: "20:15"}
+
+week:
+  mon: [workday, gym_after_work]
+  tue: [workday, gym_after_work]
+  wed: [workday]
+  thu: [workday, gym_after_work]
+  fri: [workday]
+  sat: [saturday]
+  sun: [sunday]
+
+# Baseline week: provisional numbers; the first Sunday review sets real ones (decision 7).
+# Units follow the activity: sessions, counts, or minutes.
+targets:
+  gym:        {floor: 3, goal: 4}
+  trading:    {floor: 480, goal: 600}
+  hcs:        {floor: 360, goal: 510}
+  meditation: {floor: 5, goal: 7}
+  reading:    {floor: 5, goal: 7}
+
+# Check-ins. Timing: after/before/at_end_of/at_start_of an anchor or activity, or at a clock time.
+# sweep: also ask about earlier items still unresolved. always: send even when there is nothing to ask.
+checkins:
+  workday:
+    - {kind: post_work, after: work_end, offset: 5, sweep: true, focus: [gym], always: true}
+    - {kind: pre_trading, before: trading, offset: 15, focus: [trading]}
+    - {kind: transition, at_end_of: trading, offset: 0, sweep: true, focus: [hcs]}
+    - {kind: shutdown, at: "18:40", sweep: true, preview_tomorrow: true, always: true}
+  sat:
+    - {kind: saturday, at_end_of: hcs, offset: 5, sweep: true, always: true}
+  sun:
+    - {kind: weekly_review, at_start_of: weekly_review, offset: 0, week_summary: true, always: true}
+  expire_after_minutes: 45      # unanswered check-ins expire quietly; items stay unconfirmed
+  stale_after_minutes: 120      # a check-in the bot could not send by then is dropped
+  daily_cap: 6
+  sweep_days: 2                 # how far back a check-in looks for unresolved items
+  on_track_window_minutes: 90   # a recent "on track" suppresses the pre-block ping
+  day_close: "22:00"
