@@ -76,6 +76,16 @@ review sets the real floors and goals.
 Three real weekdays where every item ends the day with a status, and check-ins that fire at the
 right Italian times across 25 October. The second half is covered by the tests; the first half is yours.
 
+Check where you stand at any time:
+
+```bash
+.venv/bin/firstthings gate                     # this week, day by day
+.venv/bin/firstthings gate --from 2026-10-26   # from a given day
+```
+
+A weekday counts once every item has an answer and every check-in went out within 5 minutes of its time.
+The evening reading is asked at the next morning's check-in, so a weekday is complete the morning after.
+
 ## Tests
 
 Tests need a throwaway Postgres: they drop and recreate the `ft` schema, and refuse to run against

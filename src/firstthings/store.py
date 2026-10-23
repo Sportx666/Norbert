@@ -362,6 +362,15 @@ def get_checkpoint(conn: Connection, cp_id: int) -> dict | None:
     return conn.execute("select * from ft.checkpoints where id = %s", (cp_id,)).fetchone()
 
 
+def checkpoints_for_day(conn: Connection, day: date) -> list[dict]:
+    """The day's scheduled check-ins (not /log views, not ones a rebuild cancelled)."""
+    return conn.execute(
+        "select * from ft.checkpoints where day = %s and created_by <> 'user' and status <> 'cancelled' "
+        "order by due_at, id",
+        (day,),
+    ).fetchall()
+
+
 def set_checkpoint_status(conn: Connection, cp_id: int, status: str, reason: str | None = None) -> None:
     conn.execute("update ft.checkpoints set status = %s, suppression_reason = %s where id = %s", (status, reason, cp_id))
 
