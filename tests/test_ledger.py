@@ -397,3 +397,40 @@ def test_weekly_review_message_separates_ahead_from_unanswered(db, t):
     assert "Gym: 0 of 3 sessions (goal 4) · 4 unanswered" in review.text
     assert "still unanswered: /log" in review.text
     assert review.keyboard == []
+
+
+# ---------------------------------------------------------------- the gate report
+
+def answer_everything(db, t, start, end):
+    """A diligent user: every ✓ offered by a check-in is pressed when it arrives."""
+    now = start
+    while now <= end:
+        for out in engine.prepare_tick(db, t, now):
+            engine.after_send(db, out, 1000 + out.checkpoint_id, now)
+            for lbl in [lbl for lbl in buttons(out) if lbl.startswith("✓")]:
+                press(db, t, out, lbl, now)
+        now = shift(now, 5)
+
+
+def test_gate_passes_after_three_answered_weekdays(db, t):
+    make_week(db, t)
+    thu = MON + timedelta(days=3)
+    answer_everything(db, t, rome(MON, 0), rome(thu, 10, 5))  # Wednesday's reading is answered Thursday 10:05
+    text, passed = engine.gate_report(db, t, rome(thu, 10, 10), MON, 4)
+    assert passed, text
+    lines = text.splitlines()
+    assert sum(line.startswith(("Mon", "Tue", "Wed")) and "  ✓ all" in line for line in lines) == 3
+    assert "10:05 post_work sent · 12:15 pre_trading sent · 14:30 transition sent · 18:40 shutdown sent" in text
+    assert "Thu 29 Oct  in progress" in text
+
+
+def test_gate_flags_downtime_and_unanswered_items(db, t):
+    make_week(db, t)
+    run(db, t, rome(MON, 0), rome(MON, 11))      # post_work goes out, nobody answers
+    text, passed = engine.gate_report(db, t, rome(MON, 12, 30), MON, 1)
+    assert "12:15 pre_trading NOT SENT" in text  # the bot was not running at 12:15
+    run(db, t, rome(MON, 22), rome(MON, 22))     # back at 22:00: the rest is too old to send
+    text, passed = engine.gate_report(db, t, rome(MON, 22, 5), MON, 1)
+    assert not passed
+    assert "14:30 transition MISSED" in text and "18:40 shutdown MISSED" in text
+    assert "unanswered: Meditation 06:00, Gym 10:00" in text

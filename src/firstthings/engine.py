@@ -24,7 +24,7 @@ from .render import (
 )
 from .store import LedgerError, _ItemView, anchors_from_json
 from .template import Template
-from .timeutil import UTC, local, minutes_between, monday_of
+from .timeutil import UTC, day_label, hhmm, local, minutes_between, monday_of
 
 PHASE1_TEXT = ("I can't hold a conversation yet; that arrives in Phase 2. "
                "For now: the buttons on each check-in, or /today, /tomorrow, /week, /log, /undo.")
@@ -279,3 +279,63 @@ def cmd_undo(db: Database, t: Template, now: datetime) -> Reply:
             return Reply(text="Nothing to undo.")
         state = "open again" if item["status"] in ("planned", "unconfirmed") else item["status"]
         return Reply(text=f"Undone. {item['title']} ({item['day']:%a %d %b}) is {state}.")
+
+
+# ---------------------------------------------------------------- Phase 1 gate
+
+GATE_WEEKDAYS = 3
+LATE_AFTER = 5  # minutes from due to sent before a check-in counts as late
+
+
+def _gate_checkin(cp: dict, now: datetime, t: Template) -> tuple[str, bool]:
+    """One check-in as text, and whether it fails the gate."""
+    head = f"{hhmm(cp['due_at'], t.tz)} {cp['kind']}"
+    if cp["status"] in ("sent", "answered", "expired"):
+        late = minutes_between(cp["due_at"], cp["sent_at"])
+        if late > LATE_AFTER:
+            return f"{head} sent {hhmm(cp['sent_at'], t.tz)}, {late} min late", True
+        return f"{head} sent", False
+    if cp["status"] == "suppressed":
+        return f"{head} not needed ({cp['suppression_reason']})", False
+    if cp["status"] == "missed":
+        return f"{head} MISSED", True
+    if minutes_between(cp["due_at"], now) > LATE_AFTER:  # still scheduled: the bot was not running
+        return f"{head} NOT SENT", True
+    return f"{head} due", False
+
+
+def gate_report(db: Database, t: Template, now: datetime, start, days: int) -> tuple[str, bool]:
+    """Day by day: is every item answered, and did every check-in go out on time?"""
+    now = _utc(now)
+    lines = [f"Phase 1 gate, {day_label(start)} to {day_label(start + timedelta(days=days - 1))}", ""]
+    complete = 0
+    with db.tx() as conn:
+        for n in range(days):
+            day = start + timedelta(days=n)
+            log = store.get_day_log(conn, day)
+            items = [i for i in store.items_for_day(conn, day) if i["status"] not in ("moved", "cancelled")]
+            if log is None or not items:
+                lines.append(f"{day_label(day)}  nothing tracked")
+                continue
+            checkins = [_gate_checkin(cp, now, t) for cp in store.checkpoints_for_day(conn, day)]
+            late = any(bad for _, bad in checkins)
+            unanswered = [i for i in items if i["status"] in store.OPEN]
+            if log["closed_at"] is None:
+                head = "in progress"
+            elif unanswered:
+                head = f"{len(unanswered)} of {len(items)} unanswered: " + ", ".join(
+                    f"{i['title']} {hhmm(i['start_at'], t.tz)}" for i in unanswered)
+            else:
+                head = f"all {len(items)} items answered"
+            if t.is_workday(day.weekday()) and log["closed_at"] and not unanswered and not late:
+                complete += 1
+                head = "✓ " + head
+            lines.append(f"{day_label(day)}  {head}")
+            if checkins:
+                lines.append("    " + " · ".join(text for text, _ in checkins))
+    passed = complete >= GATE_WEEKDAYS
+    lines += ["", f"{min(complete, GATE_WEEKDAYS)} of {GATE_WEEKDAYS} weekdays complete"
+              + (": gate passed." if passed else "."),
+              "A weekday counts once every item has an answer (the evening reading is asked the next morning) "
+              f"and every check-in went out within {LATE_AFTER} minutes."]
+    return "\n".join(lines), passed

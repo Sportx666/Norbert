@@ -1,4 +1,4 @@
-"""Command line: firstthings check-template | migrate | run | rebuild-week | today | week."""
+"""Command line: firstthings check-template | migrate | run | rebuild-week | today | week | gate."""
 from __future__ import annotations
 
 import argparse
@@ -140,6 +140,19 @@ def cmd_week(args, settings) -> int:
     return 0
 
 
+def cmd_gate(args, settings) -> int:
+    from . import engine
+    t = _template(settings.template_path)
+    now = utcnow()
+    start = date.fromisoformat(args.start) if args.start else monday_of(local(now, ROME).date())
+    db = _db(settings)
+    try:
+        print(engine.gate_report(db, t, now, start, args.days)[0])
+    finally:
+        db.close()
+    return 0
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -153,10 +166,14 @@ def main(argv=None) -> int:
     c = sub.add_parser("today", help="print today's plan from the database")
     c.add_argument("--offset", type=int, default=0)
     sub.add_parser("week", help="print this week's progress from the database")
+    c = sub.add_parser("gate", help="check the Phase 1 gate: every item answered, check-ins on time")
+    c.add_argument("--from", dest="start", help="first day to show (YYYY-MM-DD, default: this Monday)")
+    c.add_argument("--days", type=int, default=7)
     args = p.parse_args(argv)
     settings = load_settings()
     handler = {"check-template": cmd_check_template, "migrate": cmd_migrate, "run": cmd_run,
-               "today": cmd_today, "week": cmd_week, "rebuild-week": cmd_rebuild_week}[args.cmd]
+               "today": cmd_today, "week": cmd_week, "rebuild-week": cmd_rebuild_week,
+               "gate": cmd_gate}[args.cmd]
     return handler(args, settings) or 0
 
 
